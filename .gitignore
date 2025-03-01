@@ -1,0 +1,5 @@
+crew_env_3.12/
+__pycache__/
+*.pyc
+.env
+.DS_Store
