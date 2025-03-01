@@ -5,29 +5,56 @@ import os
 import json
 from dotenv import load_dotenv
 
+# Cargar variables de entorno
 load_dotenv()
 
-from crewai import Agent, Crew, Task, Tool
-from crewai_tools import ScrapeWebsiteTool, SerperDevTool, ImageProcessingTool, DataVisualizationTool, FolderReaderTool, MarketDataTool, FileWriterTool
+# Verificar que las claves API necesarias estén disponibles
+required_env_vars = ["OPENAI_API_KEY", "SERPER_API_KEY"]
+missing_vars = [var for var in required_env_vars if not os.getenv(var)]
+if missing_vars:
+    raise EnvironmentError(f"Faltan las siguientes variables de entorno: {', '.join(missing_vars)}")
 
 os.environ["OPENAI_MODEL_NAME"] = 'gpt-3.5-turbo'
 os.environ["OPENAI_API_KEY"] = os.getenv("OPENAI_API_KEY")
 os.environ["SERPER_API_KEY"] = os.getenv("SERPER_API_KEY")
 
+from crewai import Agent, Crew, Task
+from crewai_tools import (
+    ScrapeWebsiteTool,
+    SerperDevTool,
+    ImageProcessingTool,
+    DataVisualizationTool,
+    FolderReaderTool,
+    MarketDataTool,
+    FileWriterTool
+)
+
+# Inicialización de herramientas de CrewAI
 search_tool = SerperDevTool()
 scrape_tool = ScrapeWebsiteTool()
-image_processing_tool = ImageProcessingTool()
-data_visualization_tool = DataVisualizationTool()
-folder_reader_tool = FolderReaderTool()
-market_data_tool = MarketDataTool()
-file_writer_tool = FileWriterTool()
+image_tool = ImageProcessingTool()
+data_viz_tool = DataVisualizationTool()
+folder_tool = FolderReaderTool()
+market_tool = MarketDataTool()
+file_tool = FileWriterTool()
 
 #FUNCTIONS
-def process_url_for_filename(url):
+def process_url_for_filename(url: str) -> str:
     """
     Extrae el dominio principal de una URL para usarlo en el nombre del archivo.
-    Por ejemplo, de 'https://www.ejemplo.com/pagina' extraerá 'ejemplo.com'
+    Args:
+        url (str): URL a procesar
+    Returns:
+        str: Dominio principal limpio
+    Raises:
+        ValueError: Si la URL está vacía o mal formada
     """
+    if not url:
+        raise ValueError("La URL no puede estar vacía")
+    
+    # Eliminar espacios y convertir a minúsculas
+    url = url.strip().lower()
+    
     # Eliminar protocolo (http://, https://)
     if '://' in url:
         url = url.split('://')[1]
@@ -40,26 +67,10 @@ def process_url_for_filename(url):
     if '/' in url:
         url = url.split('/')[0]
     
+    # Eliminar caracteres no válidos para nombres de archivo
+    url = ''.join(c for c in url if c.isalnum() or c in '.-_')
+    
     return url
-
-def write_file_function(content, filename):
-    """
-    Guarda el contenido proporcionado en un archivo con el nombre especificado.
-    
-    Args:
-        content (str): El contenido a guardar en el archivo
-        filename (str): Nombre del archivo a crear
-        
-    Returns:
-        str: Mensaje de confirmación
-    """
-    try:
-        with open(filename, 'w', encoding='utf-8') as f:
-            f.write(content)
-        return f"Archivo '{filename}' creado exitosamente."
-    except Exception as e:
-        return f"Error al crear el archivo: {str(e)}"
-    
 
 #AGENTS
 # Data Collector Agent
@@ -68,7 +79,7 @@ data_collector = Agent(
     goal="Extraer con precisión datos de screenshots relacionados con investigación de mercado",
     backstory="Eres un especialista en extracción de datos que puede interpretar información visual de Google Market Finder e ITC Trade Map. Tu habilidad para organizar datos estructurados es fundamental para el análisis posterior.",
     allow_delegation=False,
-    tools=[image_processing_tool,folder_reader_tool],
+    tools=[image_tool, folder_tool],
     verbose=True
 )
 
@@ -78,7 +89,7 @@ market_analyst = Agent(
     goal="Analizar datos de mercado e identificar tendencias y oportunidades comerciales",
     backstory="Como analista de mercados internacionales, tienes experiencia evaluando datos económicos y de comportamiento online para determinar la viabilidad de nuevos mercados. Tu análisis será crucial para identificar los países con mayor potencial.",
     allow_delegation=True,
-    tools=[market_data_tool],
+    tools=[market_tool],
     verbose=True
 )
 
@@ -88,7 +99,7 @@ export_strategist = Agent(
     goal="Determinar los mejores países para exportación basado en criterios múltiples",
     backstory="Eres un estratega de exportación con amplia experiencia en comercio internacional. Tu especialidad es evaluar factores como aranceles, potencial de exportación, volumen de búsquedas y datos económicos para recomendar los mercados óptimos.",
     allow_delegation=True,
-    tools=[market_data_tool,data_visualization_tool],
+    tools=[market_tool, data_viz_tool],
     verbose=True
 )
 
@@ -99,7 +110,7 @@ report_generator = Agent(
     backstory="Especialista en comunicación de datos complejos de manera clara y estructurada. Tu habilidad para sintetizar información y presentarla en formatos accesibles es fundamental para que los stakeholders puedan tomar decisiones informadas. Además, te aseguras de que los reportes sean guardados correctamente para su fácil acceso.",
     allow_delegation=False,
     verbose=True,
-    tools=[data_visualization_tool, file_writer_tool] 
+    tools=[data_viz_tool, file_tool] 
 )
 
 #CREATING TASKS
@@ -119,7 +130,7 @@ extract_online_profile_task = Task(
         "La tabla debe incluir columnas para país, búsquedas mensuales, costo recomendado de Google Ads, "
         "y población activa en internet."
     ),
-    tools=[image_processing_tool],
+    tools=[image_tool],
     agent=data_collector
 )
 
@@ -140,7 +151,7 @@ extract_economic_profile_task = Task(
         "La tabla debe incluir columnas para país, tamaño de población, edad media, PIB del país, "
         "PIB per cápita, tasa de crecimiento anual y ingreso por hogar."
     ),
-    tools=[image_processing_tool],
+    tools=[image_tool],
     agent=data_collector
 )
 
@@ -160,7 +171,7 @@ extract_trade_profile_task = Task(
         "La tabla debe incluir columnas para país, volumen de importación de productos, potencial de exportación, "
         "exportaciones actuales, potencial de exportación no realizado y aranceles aplicados."
     ),
-    tools=[image_processing_tool],
+    tools=[image_tool],
     agent=data_collector
 )
 
@@ -264,7 +275,7 @@ create_country_table_data_task = Task(
         "Datos estructurados para la tabla comparativa de países, con todos los campos completados para cada país analizado, "
         "respetando exactamente el formato y estilo visual del ejemplo proporcionado."
     ),
-    tools=[data_visualization_tool],
+    tools=[data_viz_tool],
     agent=export_strategist
 )
 
@@ -294,46 +305,15 @@ compile_final_report_task = Task(
         "manteniendo la consistencia visual con el ejemplo proporcionado. "
         "El reporte ha sido guardado como archivo Markdown con el nombre 'Reporte_{ecommerce_url}.md'."
     ),
-    tools=[data_visualization_tool, file_writer_tool],
+    tools=[data_viz_tool, file_tool],
     agent=report_generator
 )
 
-# Herramientas definidas
-image_processing_tool = Tool(
-    name="ImageProcessor",
-    description="Procesa screenshots para extraer texto e información tabular de imágenes",
-    func=process_image_function
-)
-
-folder_reader_tool = Tool(
-    name="FolderReader",
-    description="Lee el contenido de carpetas y lista los archivos disponibles",
-    func=read_folder_function
-)
-
-market_data_tool = Tool(
-    name="MarketDataLookup",
-    description="Busca datos adicionales de mercado para completar información faltante",
-    func=lookup_market_data_function
-)
-
-data_visualization_tool = Tool(
-    name="DataVisualizer",
-    description="Crea visualizaciones para representar datos comparativos entre países",
-    func=create_visualization_function
-)
-
-file_writer_tool = Tool(
-    name="FileWriter",
-    description="Crea y guarda archivos en el sistema, principalmente para guardar reportes en formato Markdown",
-    func=write_file_function
-)
-
 # Asignar herramientas a los agentes
-data_collector.tools = [image_processing_tool, folder_reader_tool]
-market_analyst.tools = [market_data_tool]
-export_strategist.tools = [market_data_tool, data_visualization_tool]
-report_generator.tools = [data_visualization_tool]
+data_collector.tools = [image_tool, folder_tool]
+market_analyst.tools = [market_tool]
+export_strategist.tools = [market_tool, data_viz_tool]
+report_generator.tools = [data_viz_tool]
 
 #CREATING THE CREW
 export_analysis_crew = Crew(
